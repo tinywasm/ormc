@@ -3,7 +3,7 @@
 > This plan is dispatched via the CodeJob workflow. See skill: agents-workflow.
 > Phase B of `tinywasm/docs/KIND_UNIFICATION_MASTER_PLAN.md` (Kind unification wave).
 > Requires the published phase-A `tinywasm/model` (Kind interface). Runs parallel to
-> form/sqlt/postgres/mcp.
+> the remaining phase-B repos (form, postgres, orm) — sqlt and mcp already published.
 
 ## Prerequisite (run first)
 
@@ -24,8 +24,8 @@ orm runtime). The orm repo keeps only the query/scan/sync runtime.
 The split is already done mechanically (code moved, imports rewritten,
 `gotest ./...` green with `model` pinned to v0.0.6). What remains here is:
 
-1. The **Kind phase-B** work this repo inherited from `orm/docs/PLAN.md`
-   (stages 1–3, 5, 6 below).
+1. The **Kind phase-B** work this repo inherited from the pre-split orm
+   plan (stages 1–5 below).
 2. **Split corrections** in the generated-code contract (stage 0 below).
 
 Phase A changed `tinywasm/model`:
@@ -60,8 +60,10 @@ argument; the `RefKind` interface (`Kind` + `Ref() *Definition`) exposes it.
 the scalar foreign key (drives `SchemaExt()`/DDL FK, Go type stays scalar).
 Settled rationale: `model/docs/ARCHITECTURE.md` §8.
 
-**Ecosystem rules:** no stdlib in WASM-shared code (`tinywasm/fmt`), no
-`any`/`map` in public APIs, typed constants, errors propagate, `gotest` only.
+**Ecosystem rules:** no stdlib in WASM-shared code (`tinywasm/fmt`) — but
+ormc itself is backend-only tooling and legitimately uses stdlib already
+(`go/ast`, `strconv`, `strings`); do NOT "fix" those imports. No `any`/`map`
+in public APIs, typed constants, errors propagate, `gotest` only.
 
 ## Stage 0 — split corrections in the generated-code contract
 
@@ -90,7 +92,12 @@ The generator still emits references to the pre-split layout. In
 In `parse_definition.go`:
 
 - The `Type` case captures the expression verbatim (reuse the `exprToString`
-  machinery that `WidgetConstructor` uses today) into `KindConstructor`.
+  machinery that `WidgetConstructor` uses today) into a new
+  `FieldInfo.KindConstructor` string field. DELETE `parseFieldType` and its
+  silent `return model.FieldText` fallback — `FieldInfo.Type` is no longer
+  parsed from source; it is POPULATED by stage-2 resolution (builtin table
+  or probe). After stage 2 runs, the rest of the generator (e.g.
+  `FieldTypeToGoType`) keeps consuming `FieldInfo.Type` unchanged.
 - The `Widget` case becomes a **hard generation error** with an actionable
   message: `Field.Widget was removed (Kind unification): declare the kind in
   Type — e.g. Type: input.Email()`. Never silently ignore it.
@@ -111,8 +118,19 @@ In `parse_definition.go`:
 ## Stage 2 — storage resolution (generation-time `Storage()`)
 
 ormc emits Go struct fields, so it needs each kind's `FieldType` **at
-generation time** — it parses source and cannot call `Storage()`. Resolution
-rules, in order:
+generation time**. It parses the USER's source via AST and never compiles or
+executes it (settled: `model/docs/ARCHITECTURE.md` §9 — watcher, mid-edit
+non-compiling code, chicken-and-egg with the generated file). But that
+prohibition does NOT cover **dependency packages**: the packages where kinds
+live (`tinywasm/form/input`, project-custom kind packages) always compile —
+they are ordinary requirements of the scanned module. So non-`model` kinds
+are resolved by EXECUTING their real `Storage()` through a temporary probe
+program (single source of truth; nothing to author, nothing that can
+diverge). Two earlier mechanisms were evaluated and REJECTED: an
+`//ormc:storage` comment directive (unverifiable prose duplicating
+`Storage()` — violates `tinywasm/docs/ARNES_DE_CONSTRUCCION.md`) and
+embedded storage-marker types (new model API + heuristic AST walk).
+Resolution rules, in order:
 
 1. **Built-in table for `model.*` base kinds** (closed set from phase A):
    `model.Text→FieldText`, `model.Int→FieldInt`, `model.Float→FieldFloat`,
@@ -122,19 +140,57 @@ rules, in order:
    parameterized: their generated Go field type derives from the constructor
    argument captured in stage 1 (today `FieldTypeToGoType(fi.Type, fi.Ref)`
    builds it from the parsed `Ref:` string — same mapping, new source).
-2. **Directive comment for every other constructor** (form/input kinds and
-   project-custom kinds): the constructor declaration carries
-   `//ormc:storage <text|int|float|bool|blob|raw|struct|intslice|structslice>`
-   immediately above it. ormc locates the constructor's package source via
-   `tinywasm/modfind` (the ecosystem's `go list -m` wrapper — do NOT shell
-   out to `go list` directly or duplicate that logic) and reads the
-   directive. Phase B of `tinywasm/form` adds these directives to every
-   `input.*` constructor in the same wave.
-3. **No directive found → hard generation error** naming the constructor and
-   the expected directive syntax. Fail loud at generation, never guess a
-   storage type.
+   Identify `model.*` constructors by the selector's IMPORT PATH
+   (`github.com/tinywasm/model`, resolved through the scanned file's import
+   block), never by the literal selector text — an aliased model import
+   must still hit the builtin table.
+2. **Dependency probe for every other constructor** (form/input kinds and
+   project-custom kinds):
+   - From the stage-1 parse, collect the set of non-`model` constructor
+     expressions plus each constructor's package import path resolved from
+     the scanned file's import block (explicit alias, otherwise last path
+     segment → import path). A selector that matches NO import of the
+     scanned file = hard generation error naming the selector. A
+     constructor expression whose arguments reference identifiers from the
+     scanned package = hard generation error (the probe cannot import the
+     user's package — self-contained literal arguments only; zero-arg is
+     the ecosystem convention).
+   - Generate a throwaway probe `main.go` that imports each collected
+     package under a deterministic alias (`k0`, `k1`, …) and prints one
+     `<index>=<int(expr.Storage())>` line per constructor expression, with
+     each expression's selector rewritten to the probe alias (this sidesteps
+     user aliases and packages whose name differs from the path's last
+     segment). Run it (`go run <file>`) with the working directory set to
+     the scanned module root so imports resolve against the project's own
+     `go.mod` (the kind packages are necessarily required there — the
+     Definition file imports them). If the toolchain rejects a probe file
+     located outside the module tree, fall back to writing it under a
+     throwaway subdirectory of the module root (e.g. `.ormcprobe/`), never
+     committed and removed after the run. Parse the output back by index
+     into `FieldType`s. The probe file is ephemeral generated tooling — it
+     may use stdlib; it is never emitted into the user's project.
+   - **Cache**: results keyed by (module root, `go.mod` content hash, sorted
+     constructor-expression set). Watcher saves with no new constructors
+     never re-run the probe; a `go.mod` change invalidates. The probe
+     runner is injectable (same seam pattern as `modfind`'s `runner`) so
+     unit tests need no toolchain.
+   - Probe compile or run failure → hard generation error that surfaces the
+     compiler/runtime output verbatim (it names the broken or missing kind
+     package — actionable). Trust level note for docs: the probe executes
+     dependency constructors at generation time — the same trust model as
+     `go generate`; kind constructors are stateless zero-arg prototypes.
+3. **Fail loud, never guess.** A probed constructor whose `Storage()`
+   returns `FieldStruct`/`FieldStructSlice` = hard error: custom composition
+   kinds are unsupported by design — composition is exclusive to
+   `model.Struct(ref)`/`model.StructSlice(ref)`. A custom kind declared in
+   the same package as the Definitions that use it = hard error (rule
+   above): custom kinds live in their own package.
 
-The directive name is a typed constant shared by parser and error messages.
+New files: `storage.go` (builtin table + resolution entry point) and
+`probe.go` (probe emission, execution, cache). Probe output prefix and
+error verbs are typed constants shared by resolver, probe emitter, and
+error messages; the cache key is a typed struct (no string concatenation
+keys).
 
 ## Stage 3 — codegen output
 
@@ -158,33 +214,46 @@ In `generate.go`:
 - Parser: fixture Definition using `model.Text()`, `model.Int()`, and
   `input.Email()`; assert generated struct types, `Schema()` constructor
   round-trip, and imports.
-- Error paths: `Widget:` present → error; missing `Type:` → error; unknown
-  constructor without directive → error naming the directive syntax;
+- Error paths: `Widget:` present → error; missing `Type:` → error;
+  constructor expression with a user-package identifier argument → error;
+  probe failure (broken kind package) → error surfacing compiler output;
+  probed kind returning struct/structslice storage → error;
   `model.Struct(nil)` / composition constructor without argument → error;
   `Ref:` alongside a composition constructor → error (contradiction rule).
 - Composition round-trip: fixture with `Type: model.Struct(&ChildModel)`
   generates the nested Go type and keeps `SchemaExt()`/FK output identical
   to today except for the stage-0 `ddlc.FieldExt` retarget.
-- Directive resolution: a fixture custom kind with `//ormc:storage text`
-  resolves; same kind without directive fails.
+- Probe resolution: unit tests inject a canned probe runner (no toolchain)
+  and assert the generated probe source, the output parsing, and the cache
+  behavior (same constructor set + same `go.mod` hash → runner called once;
+  changed hash → re-run). ONE integration test in the `tests/` module runs
+  the real `go run` probe against a local fixture kind package implementing
+  `model.Kind`. Do NOT test against the real `tinywasm/form` module (its
+  directive cleanup ships in the same wave and is unpublished).
 - Regenerate this repo's own test fixtures (`tests/models_orm.go`); full
   `gotest ./...` green (root module AND the `tests/` module).
 
 ## Stage 5 — documentation
 
-- `docs/ARCHITECTURE.md` (create): what ormc is post-split (generator only),
-  the `Type:`-expression rule, the storage resolution order (built-ins →
-  directive → error), the `Widget:` removal, and the generated-code contract
-  (which packages generated files import: model, orm runtime, ddlc when FKs
-  exist, form/input when form kinds are used).
-- `README.md`: replace the gonew stub with a real quick-start (install
-  `cmd/ormc`, authoring examples in the single-slot `Type:` form, TUI
-  handler usage from `tinywasm/app`).
-- `docs/diagrams/ORMC_FLOW.md` and `docs/diagrams/DB_SYNC.md` (inherited
-  from the orm repo split): revise for accuracy against the phase-B
-  behavior (ORMC_FLOW still describes the OLD struct-tag inference — update
-  it to the `model.Definition` + `Type:` constructor flow) and fix any
-  references to the pre-split `orm/ormc` paths.
+- `docs/ARCHITECTURE.md` and `docs/DESIGN.md` already exist (written
+  documentation-first, 2026-07-10): ARCHITECTURE states the post-split
+  identity, the `Type:`-expression rule, the storage resolution order
+  (built-ins → cached dependency probe → error), the
+  custom-kinds-in-their-own-package rule, the `Widget:` removal, and the
+  generated-code contract; DESIGN records the rejected alternatives. Do NOT
+  rewrite them — VERIFY the implementation matches them and fix any detail
+  the implementation legitimately refined (e.g. exact cache key, probe
+  output format), updating the doc — never silently diverging from it.
+- `README.md`: the docs index exists; replace the quick-start placeholder
+  note with a real quick-start (install `cmd/ormc`, authoring examples in
+  the single-slot `Type:` form, TUI handler usage from `tinywasm/app`).
+- `docs/ARCHITECTURE.md`: delete the temporal "STATUS (remove this note
+  when phase B lands)" block in the header — with this plan executed, the
+  document describes implemented behavior.
+- `docs/diagrams/ORMC_FLOW.md` is already rewritten for phase B — verify it
+  against the implemented behavior. `docs/diagrams/DB_SYNC.md` (inherited
+  from the orm repo split): revise for accuracy and fix any references to
+  the pre-split `orm/ormc` paths.
 
 ## Harness checklist (mandatory)
 
@@ -194,10 +263,13 @@ In `generate.go`:
 - The local `replace github.com/tinywasm/ddlc => ../ddlc` is a dev-time
   convenience: keep it working locally, but the code must not depend on
   anything unpublished in ddlc beyond `Exporter`/`TopologicalSort`/`FieldExt`.
-- Directive keyword, generated-file header, and error verbs are typed
+- Probe output prefix, generated-file header, and error verbs are typed
   constants — no repeated string literals.
-- Use `tinywasm/modfind` for package location — never a duplicated
-  `go list` shell-out (ecosystem rule: no forked dependency logic).
+- Module discovery stays on `tinywasm/modfind` (existing `scan.go` usage) —
+  never a duplicated `go list` shell-out. The probe's `go run` is a NEW,
+  legitimate toolchain execution (it is not module discovery); its runner
+  must be injectable for tests. No new gates: this plan needs nothing
+  unpublished from model, form, or modfind.
 - `cmd/ormc/main.go` stays thin: flag parsing + injection + exit codes only.
 - If the phase-A `Kind` contract is missing something this generator needs,
   **STOP and report** — the fix lands in `tinywasm/model`'s plan, never as a
@@ -208,17 +280,21 @@ In `generate.go`:
 
 1. A Definition with `Widget:` fails generation with the actionable message;
    one missing `Type:` fails naming the field.
-2. `model.*` and `input.*` kinds resolve to correct struct field types;
-   custom kinds resolve via directive; unknown kinds fail loud.
+2. `model.*` kinds resolve via the builtin table; non-`model` kinds resolve
+   by executing their real `Storage()` through the cached dependency probe;
+   broken kind packages, non-self-contained constructor arguments, and
+   custom composition kinds fail loud.
 2b. Composition: nested Go types come from the `Struct(ref)`/`StructSlice(ref)`
    argument; nil/missing arg and `Ref:`+composition both fail generation;
    scalar-FK output (`SchemaExt()`) unchanged except `ddlc.FieldExt`.
 3. `grep -rn "WidgetConstructor" .` → empty;
-   `grep -rn "orm.FieldExt" generate.go` → only absent (emitted strings now
-   say `ddlc.FieldExt`).
+   `grep -rn "orm.FieldExt" generate.go` → empty (emitted strings now say
+   `ddlc.FieldExt`); `grep -rn "parseFieldType" .` → empty (silent
+   `FieldText` fallback deleted).
 4. `gotest ./...` green in the root module and in `tests/`.
 5. `go.mod` has no `replace` pinning model to v0.0.6.
-6. Docs written as specified.
+6. Docs verified/updated as specified in stage 5 (README quick-start
+   written; ARCHITECTURE's temporal STATUS note removed).
 
 ## Stages
 
@@ -226,7 +302,7 @@ In `generate.go`:
 |---|---|---|
 | 0 | `generate.go`, `parse_generated.go`, `tests/` | emit `ddlc.FieldExt` + new header constant (old header still recognized) |
 | 1 | `parse_definition.go` | `Type:` as expr; `Widget:` hard error; kind required; composition ref from constructor arg; `Ref:`+composition contradiction error |
-| 2 | new resolution unit | built-in table + `//ormc:storage` directive via modfind |
+| 2 | `storage.go`, `probe.go` (new) | built-in table + cached dependency-probe (`go run` temp main) executing real `Storage()` |
 | 3 | `generate.go` | emit `Type:` constructors, imports, storage-mapped struct fields |
 | 4 | `*_test.go`, regenerated fixtures | parser/resolution/error tables |
-| 5 | `docs/ARCHITECTURE.md`, `README.md` | authoring + resolution rules |
+| 5 | `docs/ARCHITECTURE.md`, `docs/DESIGN.md`, `README.md`, `docs/diagrams/` | verify docs (already written) against implementation; README quick-start |

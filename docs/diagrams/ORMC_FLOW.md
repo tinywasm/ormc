@@ -1,236 +1,56 @@
-# ORMC Flow — Unified Form Validation (Front + Back)
+# ORMC Flow — Definition → generated code
 
-## Core Principle
+> Phase-B flow (Kind unification): the input is a hand-written
+> `model.Definition` literal; roles and storage derive from the `Type:`
+> constructors. The old struct-tag inference (`db:`/`input:` tags, widget
+> defaults per Go type) is GONE. Contract details:
+> [../ARCHITECTURE.md](../ARCHITECTURE.md); storage decision:
+> [../DESIGN.md](../DESIGN.md); DB sync: [DB_SYNC.md](DB_SYNC.md).
 
-**ormc infiere el rol del struct desde los tags de campo — sin directivos de struct.**
-Un struct con ≥1 campo `input:` genera widgets (form). Un struct con ≥1 campo `db:` o campo `ID` genera
-FieldDB y se sincroniza como tabla (DB). Los roles son aditivos: un struct puede ser form + DB a la vez.
-El tag `input:` controla tanto el widget override como si el struct es formulario.
-
----
-
-## Dependency Graph
+## Generation flow
 
 ```mermaid
-graph TD
-    fmt[fmt - base layer]
-    dom[dom - HTML layout only]
-    form[form - schema-driven forms]
-    form_input[form/input - widgets]
-    json[json - codec]
-    orm[orm - db + codegen]
-
-    fmt --> dom
-    fmt --> form_input
-    fmt --> json
-    fmt --> orm
-    dom --> form
-    form_input --> form
-    form_input -.->|import in generated code| orm
+flowchart TD
+    Def["model.go<br/>var UserModel = model.Definition{...}"]
+    Parse["go/ast parse of the literal<br/>(never compiles the user package)"]
+    Field["per Field: Name, Type: constructor expr,<br/>NotNull, DB, Permitted, Ref (scalar FK)"]
+    Kind{"Type: constructor?"}
+    Builtin["model.* → builtin storage table<br/>Struct/StructSlice: Go type from ref arg"]
+    Probe["other packages → dependency probe:<br/>temp main imports kind pkgs,<br/>go run executes real Storage(),<br/>cached by go.mod hash + constructor set"]
+    Emit["emit file_orm.go:<br/>struct (storage-mapped Go types),<br/>Schema() with Type: verbatim,<br/>codec + Validate + User_.Field helpers,<br/>SchemaExt() []ddlc.FieldExt if FKs"]
+    Def --> Parse
+    Parse --> Field
+    Field --> Kind
+    Kind --> Builtin
+    Kind --> Probe
+    Builtin --> Emit
+    Probe --> Emit
 ```
 
-**Reglas:**
-- dom: solo layout HTML (Div, H1, Button...). NO tiene funciones de formulario.
-- form: unica forma de crear formularios. Usa form.New(parentID, &struct).
-- form/input: widgets con validacion. Importado por form y por codigo generado.
-- orm: no importa form/input en su codigo fuente. Solo el generado (*_orm.go).
+## Hard generation errors (never guess)
 
----
+| Input | Error |
+|---|---|
+| field without `Type:` | kind required (fail-closed guard) |
+| `Widget:` present | removed by Kind unification — declare the kind in `Type:` |
+| `Ref:` next to `Struct(ref)`/`StructSlice(ref)` | contradiction: composition ref travels in the constructor |
+| composition constructor with missing/nil ref | ref required |
+| constructor argument referencing the scanned package | probe cannot import the user's package — literals only |
+| custom kind in the same package as its Definitions | custom kinds live in their own package |
+| probe compile/run failure | surfaces compiler output verbatim |
+| probed kind returning struct/structslice storage | custom composition kinds unsupported |
 
-## Role Inference (from field tags)
+## Runtime validation (unchanged, fail-closed)
 
 ```mermaid
-graph LR
-    subgraph Field_Tags
-        inputTag["`input:\"...\"` en algún campo"]
-        dbTag["`db:\"...\"` en algún campo o campo `ID`"]
-        neither["(sin tags de rol)"]
-    end
-
-    inputTag -->|isForm=true| Widgets[Widgets en Schema + import form/input]
-    dbTag -->|isDB=true| DB[FieldDB + sync tabla]
-    neither -->|codec-only| Codec[Solo ModelName + codec + *List]
+flowchart TD
+    Front["FRONTEND wasm<br/>form submit"]
+    Back["BACKEND server<br/>orm insert/update"]
+    V["model.ValidateFields<br/>(generated Validate delegates here)"]
+    F["per field: NotNull → Kind.Validate → Permitted"]
+    R["same result front and back"]
+    Front --> V
+    Back --> V
+    V --> F
+    F --> R
 ```
-
-| Señal en campos | isForm | isDB | Qué se añade |
-| :--- | :--- | :--- | :--- |
-| ninguna | no | no | solo codec (DTO) |
-| `input:` ≠ `"-"` | **si** | no | widgets; no sync tabla |
-| `db:` ≠ `"-"` o campo `ID` | no | **si** | FieldDB + sync tabla; sin widgets |
-| ambas | **si** | **si** | widgets + FieldDB + sync tabla |
-
-> `input:"-"` excluye ese campo del form pero no cuenta para `isForm`.
-> `db:"-"` excluye ese campo de DB y anula la convención `ID`.
-
----
-
-## Widget Assignment (solo structs con `isForm`)
-
-### Default por Go type
-
-| Go type | Widget default |
-| :--- | :--- |
-| `string` | `input.Text()` |
-| `int`, `int64`, `uint`, etc. | `input.Number()` |
-| `float32`, `float64` | `input.Number()` |
-| `bool` | `input.Checkbox()` |
-
-### Override con tag `input:`
-
-| Tag | Resultado |
-| :--- | :--- |
-| _(sin tag)_ | default por Go type |
-| `input:"email"` | `input.Email()` (override) |
-| `input:"textarea"` | `input.Textarea()` (override) |
-| `input:"-"` | sin widget (excluido del form) |
-| `input:"email,required,min=5"` | `input.Email()` + Permitted modifiers |
-| `input:"required,min=5"` | default por Go type + Permitted modifiers |
-
----
-
-## ormc Run() Flow
-
-```mermaid
-sequenceDiagram
-    participant Ormc as orm.Ormc
-    participant AST as Parser/AST
-    participant Gen as Generator
-
-    Ormc->>Ormc: Run()
-
-    rect rgb(240, 240, 240)
-    Note over Ormc: Pass 1: collectAllStructs()
-    Ormc->>AST: ParseStruct(structAST)
-    Note over AST: Extract tags: db, json, input
-    Note over AST: Infer hasForm: ≥1 input: ≠ "-"
-    Note over AST: Infer hasDB: ≥1 db: ≠ "-" OR campo ID
-    AST->>AST: If isForm: resolve widget per field
-    Note over AST: 1. input:"-" → skip
-    Note over AST: 2. input:"type" → inputWidgets[type]
-    Note over AST: 3. no tag → defaultWidgets[goType]
-    Note over AST: 4. parse modifiers (required, min, max...)
-    AST-->>Ormc: Build FieldInfo (IsForm, NoDB derived)
-    end
-
-    rect rgb(240, 240, 240)
-    Note over Ormc: Pass 2: ResolveRelations()
-    Ormc->>Ormc: match FK via db:"ref=parent"
-    end
-
-    rect rgb(240, 240, 240)
-    Note over Ormc: Pass 3: GenerateForFile()
-    Ormc->>Gen: Schema() with Widget if isForm
-    Ormc->>Gen: Validate() → fmt.ValidateFields()
-    Ormc->>Gen: ModelName always; FieldDB + ReadOne/ReadAll if isDB
-    Note over Gen: Import form/input only if widgets present
-    end
-
-    rect rgb(240, 240, 240)
-    Note over Ormc: Pass 4: go get + go mod tidy
-    end
-```
-
----
-
-## Validation Flow (Runtime — Same Code Front + Back)
-
-```mermaid
-graph TD
-    UI[User Input] --> Validate
-
-    subgraph Runtime_Both_Sides
-        direction TB
-        Validate[fmt.ValidateFields action, model]
-        Schema[for each field in Schema]
-        FVal[field.Validate]
-
-        Validate --> Schema
-        Schema --> FVal
-
-        subgraph Internal_Checks
-            NotNull[1. NotNull check]
-            WidgetVal[2. Widget.Validate semantic]
-            PermVal[3. Permitted.Validate characters]
-        end
-
-        FVal --> NotNull
-        FVal --> WidgetVal
-        FVal --> PermVal
-    end
-
-    subgraph Entry_Points
-        direction LR
-        Front[FRONTEND WASM<br/>form.Validate]
-        Back[BACKEND Server<br/>orm.Insert]
-    end
-
-    Front --> Validate
-    Back --> Validate
-
-    Internal_Checks --> Result[Same result: Frontend == Backend]
-```
-
----
-
-## Tag System (Final)
-
-No struct-level directives needed. Role is inferred from field tags:
-
-```go
-type User struct {
-    ID         string  `db:"pk"`                       // ID convention → isDB=true
-    Email      string  `input:"email"`                 // input: → isForm=true; override → input.Email()
-    Phone      string  `input:"phone"`                 // override → input.Phone()
-    BirthDate  string  `input:"date"`                  // override → input.Date()
-    Bio        string  `input:"textarea"`              // override → input.Textarea()
-    Nick       string  `input:"required,min=3,max=20"` // default text + modifiers
-    Age        int     `db:"not_null"`                 // int → input.Number() default
-    Active     bool                                    // bool → input.Checkbox() default
-    InternalID string  `input:"-"`                     // excluded from form; no Widget
-}
-// Result: isForm=true (has input: fields), isDB=true (ID convention) → full: widgets + FieldDB + sync
-```
-
-**Rules:**
-- `input:"type"` → explicit widget override
-- `input:"type,modifier,..."` → explicit widget + Permitted rules
-- `input:"modifier,..."` → Go type default widget + Permitted rules
-- `input:"-"` → no widget (excluded from form)
-- No `input:` tag → Go type default widget
-- `db:"not_null"` → NotNull (also settable via `input:"required"`)
-
----
-
-## Source Tag Cleanup (rewriteModelTags)
-
-ormc rewrites model.go in-place before/after generation:
-
-| BEFORE | AFTER |
-| :--- | :--- |
-| `json:"email"` | (removed — redundant with field name) |
-| `json:"email,omitempty"` | `json:",omitempty"` |
-| `json:",omitempty"` | `json:",omitempty"` (unchanged) |
-| `json:"-"` | `json:"-"` (unchanged) |
-| `form:"email"` | (removed — legacy tag) |
-| `validate:"email,required,min=5"` | (removed — legacy tag) |
-| `input:"date"` | `input:"date"` (unchanged) |
-| `db:"pk"` | `db:"pk"` (unchanged) |
-
----
-
-## Custom Inputs (web/input/) — Future
-
-```
-web/input/
-├── currency.go     ← func Currency() fmt.Widget
-└── colorpicker.go  ← func Colorpicker() fmt.Widget
-
-ormc AST-scans this directory:
-  1. Finds func *() fmt.Widget
-  2. Adds to inputWidgets map with priority over stdlib
-  3. Generated code: webinput.Currency()
-  4. Import: webinput "yourmodule/web/input"
-```
-
-Custom inputs take priority: if project defines `Email()` in web/input/,
-it overrides stdlib `input.Email()`.

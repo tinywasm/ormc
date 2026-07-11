@@ -13,7 +13,7 @@ require (
 
 require (
 	github.com/tinywasm/ddlc v0.0.4 // indirect
-	github.com/tinywasm/fmt v0.25.1 // indirect
+	github.com/tinywasm/fmt v0.25.2 // indirect
 	github.com/tinywasm/modfind v0.0.4 // indirect
 )
 

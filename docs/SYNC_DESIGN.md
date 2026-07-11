@@ -2,8 +2,8 @@
 
 > Honest assessment of the architecture behind `db.Sync`/`db.SyncSchema` and the `tinywasm/app`
 > hot-schema-sync loop. Not marketing — the goal is to know exactly what we're buying and what we're
-> deferring. See [DB_SYNC diagram](diagrams/DB_SYNC.md) for the flow and `docs/PLAN.md` for the
-> contract.
+> deferring. See [DB_SYNC diagram](diagrams/DB_SYNC.md) for the flow and
+> [ARCHITECTURE.md](ARCHITECTURE.md) for the generator's contract.
 
 ## The approach in one paragraph
 
@@ -59,13 +59,13 @@ thing — provided we're clear-eyed about the same trade-offs those tools carry.
 
 1. **Dev/prod divergence — the central weakness.** Additive push is *not* how production schema
    evolution works (review, reversibility, data backfills, zero-downtime). We now have **two
-   evolution paths**: dev `Sync` and the deferred versioned migrations (PLAN §8). If they're not
+   evolution paths**: dev `Sync` and a deferred versioned-migrations path (not yet designed). If they're not
    derived from the same source, "works in dev, breaks in prod" is the predictable failure. Every
    tool above that started with push-only (Prisma, GORM users) learned this. **The deferred part is
    the hard part.**
 2. **"git is the history" is only half-true — and the build log is not a substitute.** Git records
-   the *model's* history, not the *DB's applied mutations*. ormc has its own logger in the build tab
-   (app PLAN §3.3) and **must surface every action and error there — nothing omitted**; that is
+   the *model's* history, not the *DB's applied mutations*. ormc has its own logger in the
+   `tinywasm/app` build tab and **must surface every action and error there — nothing omitted**; that is
    essential for visibility. But that log is **ephemeral** (per-session, scrolls away, not
    machine-readable, not tied to DB state). It is *not* a **durable, replayable audit log**: you
    cannot reconstruct or roll back the DB's evolution from it, and additive sync is not invertible.
@@ -111,8 +111,8 @@ disposable.
 
 **Wrong** as the *only* mechanism for: anything with production data, multi-developer schema
 coordination, audit/rollback needs, or type/destructive changes. For those, push-mode must be paired
-with a versioned, reviewable migration path derived from the *same* models — which is exactly the
-deferred PLAN §8.
+with a versioned, reviewable migration path derived from the *same* models — exactly the deferred
+versioned-migrations work noted above (not yet designed).
 
 ## Recommendation
 
