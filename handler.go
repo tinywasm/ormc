@@ -9,8 +9,9 @@ type Generator struct {
 	rootDir  string
 	skipTidy bool
 	syncer   SchemaSyncer
-	finder   *modfind.Finder
-	cache    map[string]StructInfo
+	finder      *modfind.Finder
+	cache       map[string]StructInfo
+	probeRunner ProbeRunner
 }
 
 // NewOrmc creates a new Ormc handler with rootDir defaulting to ".".
