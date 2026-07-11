@@ -1,4 +1,5 @@
 # ormc
+<img src="docs/img/badges.svg">
 
 Go code generator for `tinywasm/model` definitions: reads hand-written
 `model.Definition` literals via AST and emits the concrete struct, schema,
