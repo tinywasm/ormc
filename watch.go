@@ -1,5 +1,10 @@
 package ormc
 
+import (
+	"go/parser"
+	"go/token"
+)
+
 // NewFileEvent implements the file-event contract for watchers (e.g. tinywasm/app's devwatch).
 func (g *Generator) NewFileEvent(fileName, extension, filePath, event string) error {
 	if fileName != "model.go" && fileName != "models.go" {
@@ -9,6 +14,15 @@ func (g *Generator) NewFileEvent(fileName, extension, filePath, event string) er
 	// 1. Parse only that file
 	infos, err := g.parseDefinitionsInFile(filePath)
 	if err != nil {
+		return err
+	}
+
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+	if err != nil {
+		return err
+	}
+	if err := g.resolveStorage(infos, node); err != nil {
 		return err
 	}
 

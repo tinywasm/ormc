@@ -1,14 +1,14 @@
-
 package ormc
 
 import "github.com/tinywasm/model"
 
 import (
 	"os"
+	"sort"
 	"strings"
 
-	"github.com/tinywasm/fmt"
 	"github.com/tinywasm/ddlc"
+	"github.com/tinywasm/fmt"
 )
 
 // GenerateForFile writes ORM implementations for all infos into one file.
@@ -23,7 +23,9 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 	buf.Write(fmt.Sprintf("package %s\n\n", infos[0].PackageName))
 
 	hasORM := false
-	hasWidget := false
+	// kindImports collects the packages that non-model kind constructors
+	// (form/input kinds, project-custom kinds) live in, keyed by import path.
+	kindImports := make(map[string]string) // path -> alias used in the scanned source
 	for _, info := range infos {
 		if !info.NoDB {
 			hasORM = true
@@ -37,8 +39,8 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 			}
 		}
 		for _, f := range info.Fields {
-			if f.WidgetConstructor != "" && f.WidgetConstructor != "nil" {
-				hasWidget = true
+			if f.KindImportPath != "" {
+				kindImports[f.KindImportPath] = f.KindImportAlias
 			}
 		}
 	}
@@ -52,7 +54,9 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 	// SchemaExt needs ddlc.FieldExt
 	hasFK := false
 	for _, info := range infos {
-		if info.NoDB { continue }
+		if info.NoDB {
+			continue
+		}
 		for _, f := range info.Fields {
 			if f.Ref != "" && f.Type != model.FieldStruct && f.Type != model.FieldStructSlice {
 				hasFK = true
@@ -67,8 +71,24 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 		buf.Write("\t\"github.com/tinywasm/ddlc\"\n")
 	}
 
-	if hasWidget {
-		buf.Write("\t\"github.com/tinywasm/form/input\"\n")
+	if len(kindImports) > 0 {
+		paths := make([]string, 0, len(kindImports))
+		for path := range kindImports {
+			paths = append(paths, path)
+		}
+		sort.Strings(paths)
+		for _, path := range paths {
+			alias := kindImports[path]
+			defaultAlias := path
+			if idx := strings.LastIndex(path, "/"); idx != -1 {
+				defaultAlias = path[idx+1:]
+			}
+			if alias != "" && alias != defaultAlias {
+				buf.Write(fmt.Sprintf("\t%s \"%s\"\n", alias, path))
+			} else {
+				buf.Write(fmt.Sprintf("\t\"%s\"\n", path))
+			}
+		}
 	}
 	buf.Write(")\n\n")
 
@@ -119,9 +139,6 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 				}
 				if f.OmitEmpty {
 					buf.Write(", OmitEmpty: true")
-				}
-				if f.WidgetConstructor != "" {
-				buf.Write(fmt.Sprintf(", Widget: %s", f.WidgetConstructor))
 				}
 				writePermittedFields(buf, f)
 				buf.Write("},\n")
@@ -338,7 +355,6 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 			buf.Write("\treturn results, err\n")
 			buf.Write("}\n\n")
 
-
 			// SchemaExt
 			hasFK := false
 			for _, f := range info.Fields {
@@ -382,13 +398,13 @@ type modelStub struct {
 	exts   []ddlc.FieldExt
 }
 
-func (m *modelStub) ModelName() string              { return m.name }
+func (m *modelStub) ModelName() string                { return m.name }
 func (m *modelStub) Schema() []model.Field            { return m.schema }
-func (m *modelStub) Pointers() []any                { return nil }
-func (m *modelStub) IsNil() bool                    { return m == nil }
+func (m *modelStub) Pointers() []any                  { return nil }
+func (m *modelStub) IsNil() bool                      { return m == nil }
 func (m *modelStub) EncodeFields(_ model.FieldWriter) {}
 func (m *modelStub) DecodeFields(_ model.FieldReader) {}
-func (m *modelStub) SchemaExt() []ddlc.FieldExt      { return m.exts }
+func (m *modelStub) SchemaExt() []ddlc.FieldExt       { return m.exts }
 
 func newModelStub(info StructInfo) *modelStub {
 	stub := &modelStub{name: info.ModelName}

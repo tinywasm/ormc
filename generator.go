@@ -1,4 +1,3 @@
-
 package ormc
 
 import "github.com/tinywasm/model"
@@ -27,34 +26,36 @@ const (
 )
 
 type FieldInfo struct {
-	Name       string
-	ColumnName string
-	Type       model.FieldType
+	Name            string
+	ColumnName      string
+	Type            model.FieldType
 	KindConstructor string
-	PK         bool
-	Unique     bool
-	NotNull    bool
-	AutoInc    bool
-	Ref        string
-	RefColumn  string
-	OnDelete   string
-	IsPK       bool
-	OldName    string
-	GoType     string
-	IsPointer  bool // true if the original field is *T (only meaningful for FieldStruct)
-	OmitEmpty  bool
-	Exclude    bool
-	HasDB      bool
+	KindImportPath  string   // resolved import path of the constructor's package (empty for model.* builtins)
+	KindImportAlias string   // alias/selector used in the scanned source (e.g. "input" in "input.Email()")
+	KindArgIdents   []string // bare identifiers passed as direct arguments to the constructor call
+	PK              bool
+	Unique          bool
+	NotNull         bool
+	AutoInc         bool
+	Ref             string
+	RefColumn       string
+	OnDelete        string
+	IsPK            bool
+	OldName         string
+	GoType          string
+	IsPointer       bool // true if the original field is *T (only meaningful for FieldStruct)
+	OmitEmpty       bool
+	Exclude         bool
+	HasDB           bool
 	// Permitted config — populated from validate:"..." tag
-	Letters           bool
-	Tilde             bool
-	Numbers           bool
-	Spaces            bool
-	Extra             []rune
-	Minimum           int
-	Maximum           int
-	WidgetConstructor string   // e.g. "input.Text()"
-	Tags              []string // input modifiers e.g. "notilde", "min=2"
+	Letters bool
+	Tilde   bool
+	Numbers bool
+	Spaces  bool
+	Extra   []rune
+	Minimum int
+	Maximum int
+	Tags    []string // input modifiers e.g. "notilde", "min=2"
 }
 
 type StructInfo struct {
@@ -63,9 +64,9 @@ type StructInfo struct {
 	PackageName       string
 	Fields            []FieldInfo
 	ModelNameDeclared bool
-	IsForm bool
-	NoDB   bool
-	SourceFile     string
+	IsForm            bool
+	NoDB              bool
+	SourceFile        string
 }
 
 // buildAliasMap scans all .go files in dir and returns a map of

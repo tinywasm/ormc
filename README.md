@@ -4,7 +4,70 @@ Go code generator for `tinywasm/model` definitions: reads hand-written
 `model.Definition` literals via AST and emits the concrete struct, schema,
 codec, validation, and typed query helpers the runtime consumes.
 
-> Quick-start and CLI usage will land with the phase-B implementation.
+## Quick-start
+
+Install the CLI:
+
+```bash
+go install github.com/tinywasm/ormc/cmd/ormc@latest
+```
+
+Author a `model.go` (or `models.go`) with one or more `model.Definition`
+literals. Each field declares its kind in the single `Type:` slot as a
+constructor expression — never a bare enum, never a struct tag:
+
+```go
+package myapp
+
+import (
+	"github.com/tinywasm/model"
+	"github.com/tinywasm/form/input"
+)
+
+var AddressModel = model.Definition{
+	Name: "address",
+	Fields: model.Fields{
+		{Name: "street", Type: model.Text()},
+		{Name: "city", Type: model.Text()},
+	},
+}
+
+var UserModel = model.Definition{
+	Name: "user",
+	Fields: model.Fields{
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true, AutoInc: true}},
+		{Name: "email", Type: input.Email(), NotNull: true},   // form kind: validates + renders
+		{Name: "status", Type: model.Text()},                   // base kind: validates only
+		{Name: "address", Type: model.Struct(&AddressModel)},   // composition: ref IN the constructor
+		{Name: "manager_id", Type: model.Int(), Ref: &UserModel}, // scalar FK: Ref's ONLY meaning
+	},
+}
+```
+
+Run the generator from the module root:
+
+```bash
+ormc
+```
+
+It walks the module for `model.go`/`models.go` files and writes one
+`<file>_orm.go` per source file, containing the plain struct, the
+`Fielder` methods (`Schema()`, `Pointers()`, encode/decode), `Validate()`,
+typed query-field helpers (`User_.Email`), and `SchemaExt()` for any scalar
+FKs. `model.*` kinds resolve via a builtin table; every other kind (form
+kinds, project-custom kinds) resolves by executing its real `Storage()`
+through a cached, generation-time dependency probe — see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the resolution order and
+failure modes.
+
+Inside [tinywasm/app](https://github.com/tinywasm/app)'s dev console, ormc
+runs as a live TUI handler instead of the standalone CLI: `New()` returns a
+`*Generator` implementing the handler contract (`Name()`,
+`SupportedExtensions()`, `NewFileEvent(...)`), so the tool regenerates the
+affected `_orm.go` on every save and, once `SetSyncer` is called, syncs the
+DB schema. See [docs/SYNC_DESIGN.md](docs/SYNC_DESIGN.md) and
+[docs/diagrams/DB_SYNC.md](docs/diagrams/DB_SYNC.md) for the watcher/sync
+flow.
 
 ## Documentation
 

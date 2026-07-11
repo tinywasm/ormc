@@ -47,7 +47,9 @@ func (g *Generator) resolveStorage(infos []StructInfo, file *ast.File) error {
 			path := importMap[selector]
 			if path == "" {
 				// Try common aliases if not found in imports
-				if selector == "model" { path = "github.com/tinywasm/model" }
+				if selector == "model" {
+					path = "github.com/tinywasm/model"
+				}
 			}
 
 			if path == "github.com/tinywasm/model" || (path == "" && selector == "model") {
@@ -59,12 +61,19 @@ func (g *Generator) resolveStorage(infos []StructInfo, file *ast.File) error {
 
 			if selector == "" && constructor != "" {
 				// Local kind? Plan says custom kinds live in their own package.
-				return fmt.Errf("field %s (struct %s): custom kinds must live in their own package (found local kind %s)", fi.ColumnName, infos[i].Name, constructor)
+				return fmt.Err(fmt.Sprintf("field %s (struct %s): custom kinds must live in their own package (found local kind %s)", fi.ColumnName, infos[i].Name, constructor))
 			}
 
 			if path == "" {
-				return fmt.Errf("field %s (struct %s): unknown package alias %s in kind %s", fi.ColumnName, infos[i].Name, selector, fi.KindConstructor)
+				return fmt.Err(fmt.Sprintf("field %s (struct %s): unknown package alias %s in kind %s", fi.ColumnName, infos[i].Name, selector, fi.KindConstructor))
 			}
+
+			if len(fi.KindArgIdents) > 0 {
+				return fmt.Err(fmt.Sprintf("field %s (struct %s): kind %s: constructor argument %q references an identifier from the scanned package — probe kinds require self-contained (zero-arg or literal-only) constructors", fi.ColumnName, infos[i].Name, fi.KindConstructor, fi.KindArgIdents[0]))
+			}
+
+			fi.KindImportPath = path
+			fi.KindImportAlias = selector
 
 			toProbe = append(toProbe, fieldProbe{
 				infoIdx:  i,
@@ -89,13 +98,15 @@ func (g *Generator) resolveStorage(infos []StructInfo, file *ast.File) error {
 	for i := range infos {
 		for j := range infos[i].Fields {
 			fi := &infos[i].Fields[j]
+			// Every field was classified above: either matched the builtin
+			// table, resolved via the probe, or the classification loop
+			// above already returned a hard error. NOTE: model.FieldText is
+			// FieldType's zero value, so fi.Type == 0 is NOT a reliable
+			// "unresolved" sentinel here — do not reintroduce that check.
 			if fi.Type == model.FieldStruct || fi.Type == model.FieldStructSlice {
 				if fi.Ref == "" {
-					return fmt.Errf("field %s (struct %s): composition kind %s requires a non-nil Definition argument", fi.ColumnName, infos[i].Name, fi.KindConstructor)
+					return fmt.Err(fmt.Sprintf("field %s (struct %s): composition kind %s requires a non-nil Definition argument", fi.ColumnName, infos[i].Name, fi.KindConstructor))
 				}
-			} else if fi.Type == 0 {
-				// This should have been caught by probe failure, but just in case
-				return fmt.Errf("field %s (struct %s): failed to resolve storage for kind %s", fi.ColumnName, infos[i].Name, fi.KindConstructor)
 			}
 			fi.GoType = FieldTypeToGoType(fi.Type, fi.Ref)
 		}
@@ -112,9 +123,9 @@ type fieldProbe struct {
 }
 
 type probeResult struct {
-	infoIdx int
+	infoIdx  int
 	fieldIdx int
-	storage model.FieldType
+	storage  model.FieldType
 }
 
 func parseConstructor(expr string) (selector, constructor string) {

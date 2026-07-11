@@ -3,7 +3,6 @@ package ormc
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,7 +66,7 @@ func (g *Generator) runProbe(probes []fieldProbe, infos []StructInfo) ([]probeRe
 
 	output, err := runner(buf.String(), g.rootDir)
 	if err != nil {
-		return nil, fmt.Errf("probe failure: %v\nOutput:\n%s", err, output)
+		return nil, fmt.Err(fmt.Sprintf("probe failure: %v\nOutput:\n%s", err, output))
 	}
 
 	// Parse output
@@ -87,8 +86,8 @@ func (g *Generator) runProbe(probes []fieldProbe, infos []StructInfo) ([]probeRe
 		st := model.FieldType(val)
 
 		if st == model.FieldStruct || st == model.FieldStructSlice {
-			return nil, fmt.Errf("field %s (struct %s): custom composition kinds are unsupported (kind %s returned storage %v)",
-				infos[p.infoIdx].Fields[p.fieldIdx].ColumnName, infos[p.infoIdx].Name, p.expr, st)
+			return nil, fmt.Err(fmt.Sprintf("field %s (struct %s): custom composition kinds are unsupported (kind %s returned storage %v)",
+				infos[p.infoIdx].Fields[p.fieldIdx].ColumnName, infos[p.infoIdx].Name, p.expr, st))
 		}
 
 		results = append(results, probeResult{
@@ -99,30 +98,39 @@ func (g *Generator) runProbe(probes []fieldProbe, infos []StructInfo) ([]probeRe
 	}
 
 	if len(results) != len(probes) {
-		return nil, fmt.Errf("probe output mismatch: expected %d lines, got %d", len(probes), len(results))
+		return nil, fmt.Err(fmt.Sprintf("probe output mismatch: expected %d lines, got %d", len(probes), len(results)))
 	}
 
 	probeCache[cacheKey] = results
 	return results, nil
 }
 
-func (g *Generator) getCacheKey(probes []fieldProbe) string {
-	h := sha256.New()
-	h.Write([]byte(g.rootDir))
+// probeCacheKey identifies a probe run by (module root, go.mod content hash,
+// sorted constructor-expression set) — a comparable struct, not a
+// concatenated/hashed string blob, so each component stays inspectable.
+type probeCacheKey struct {
+	rootDir   string
+	goModHash [sha256.Size]byte
+	exprSet   string // probes, already sorted by expr, joined as "expr=pkgPath;..."
+}
+
+func (g *Generator) getCacheKey(probes []fieldProbe) probeCacheKey {
+	key := probeCacheKey{rootDir: g.rootDir}
 
 	modPath := filepath.Join(g.rootDir, "go.mod")
 	if b, err := os.ReadFile(modPath); err == nil {
-		h.Write([]byte(hex.EncodeToString(sha256.New().Sum(b))))
+		key.goModHash = sha256.Sum256(b)
 	}
 
-	for _, p := range probes {
-		h.Write([]byte(p.expr))
-		h.Write([]byte(p.pkgPath))
+	parts := make([]string, len(probes))
+	for i, p := range probes {
+		parts[i] = p.expr + "=" + p.pkgPath
 	}
-	return hex.EncodeToString(h.Sum(nil))
+	key.exprSet = strings.Join(parts, ";")
+	return key
 }
 
-var probeCache = make(map[string][]probeResult)
+var probeCache = make(map[probeCacheKey][]probeResult)
 
 func defaultProbeRunner(mainContent string, workDir string) (string, error) {
 	tempDir := filepath.Join(workDir, ".ormcprobe")

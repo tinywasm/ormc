@@ -1,4 +1,3 @@
-
 package ormc
 
 import (
@@ -162,6 +161,13 @@ func (g *Generator) parseField(cl *ast.CompositeLit) (FieldInfo, error) {
 			}
 		case "Type":
 			fi.KindConstructor = exprToString(kv.Value)
+			if call, ok := kv.Value.(*ast.CallExpr); ok {
+				for _, arg := range call.Args {
+					if ident, ok := arg.(*ast.Ident); ok {
+						fi.KindArgIdents = append(fi.KindArgIdents, ident.Name)
+					}
+				}
+			}
 		case "NotNull":
 			fi.NotNull = exprToBool(kv.Value)
 		case "OmitEmpty":
@@ -169,7 +175,7 @@ func (g *Generator) parseField(cl *ast.CompositeLit) (FieldInfo, error) {
 		case "Exclude":
 			fi.Exclude = exprToBool(kv.Value)
 		case "Widget":
-			return FieldInfo{}, fmt.Errf("field %s: Field.Widget was removed (Kind unification): declare the kind in Type — e.g. Type: input.Email()", fi.ColumnName)
+			return FieldInfo{}, fmt.Err(fmt.Sprintf("field %s: Field.Widget was removed (Kind unification): declare the kind in Type — e.g. Type: input.Email()", fi.ColumnName))
 		case "DB":
 			g.parseDBField(kv.Value, &fi)
 		case "Ref":
@@ -180,36 +186,35 @@ func (g *Generator) parseField(cl *ast.CompositeLit) (FieldInfo, error) {
 	}
 
 	if fi.KindConstructor == "" {
-		return FieldInfo{}, fmt.Errf("field %s: kind required", fi.ColumnName)
+		return FieldInfo{}, fmt.Err(fmt.Sprintf("field %s: kind required", fi.ColumnName))
 	}
 
 	// Composition refs come from the constructor argument, not Ref:
-	if strings.Contains(fi.KindConstructor, "model.Struct") {
-		// Extract arg from model.Struct(&AddressModel)
+	_, ctorName := parseConstructor(fi.KindConstructor)
+	if ctorName == "Struct" || ctorName == "StructSlice" {
+		// Extract arg from model.Struct(&AddressModel) / model.StructSlice(&AddressModel)
 		arg := ""
 		if call, ok := kvToExpr(cl, "Type").(*ast.CallExpr); ok && len(call.Args) > 0 {
 			arg = exprToString(call.Args[0])
 		}
 		if arg == "" || arg == "nil" {
-			return FieldInfo{}, fmt.Errf("field %s: model.Struct requires a non-nil Definition argument", fi.ColumnName)
+			return FieldInfo{}, fmt.Err(fmt.Sprintf("field %s: %s requires a non-nil Definition argument", fi.ColumnName, fi.KindConstructor))
 		}
 		if fi.Ref != "" {
-			return FieldInfo{}, fmt.Errf("field %s: contradiction: Ref: cannot be used with composition kind %s (it already takes the definition as an argument)", fi.ColumnName, fi.KindConstructor)
+			return FieldInfo{}, fmt.Err(fmt.Sprintf("field %s: contradiction: Ref: cannot be used with composition kind %s (it already takes the definition as an argument)", fi.ColumnName, fi.KindConstructor))
 		}
 		fi.Ref = strings.TrimPrefix(arg, "&")
-		if strings.Contains(fi.KindConstructor, "model.StructSlice") {
+		if ctorName == "StructSlice" {
 			fi.Type = model.FieldStructSlice
 		} else {
 			fi.Type = model.FieldStruct
 		}
+		fi.GoType = FieldTypeToGoType(fi.Type, fi.Ref)
 	}
 
-	// Post-process type mapping to GoType
-	if fi.Type == 0 {
-		// Temporary fallback until Stage 2 resolution is implemented
-		fi.Type = model.FieldText
-	}
-	fi.GoType = FieldTypeToGoType(fi.Type, fi.Ref)
+	// Non-composition fields: fi.Type stays 0 here and is populated by
+	// stage-2 resolution (resolveStorage: builtin table or dependency probe).
+	// GoType for those fields is computed there once fi.Type is known.
 
 	return fi, nil
 }
@@ -289,7 +294,6 @@ func (g *Generator) parsePermitted(expr ast.Expr, fi *FieldInfo) {
 	}
 }
 
-
 func parseRef(expr ast.Expr) string {
 	s := exprToString(expr)
 	s = strings.TrimPrefix(s, "&")
@@ -365,7 +369,6 @@ func kvToExpr(cl *ast.CompositeLit, key string) ast.Expr {
 	}
 	return nil
 }
-
 
 func FieldTypeToGoType(ft model.FieldType, ref string) string {
 	switch ft {
