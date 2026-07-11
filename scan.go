@@ -1,6 +1,8 @@
 package ormc
 
 import (
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 
@@ -12,6 +14,7 @@ import (
 //   - Writable module (main / replace): regenerate <file>_orm.go from model.go,
 //     then sync each DB struct.
 //   - Read-only module (cache): parse the committed model_orm.go, then sync.
+//
 // No-op if no syncer is injected (CLI codegen-only path).
 func (g *Generator) ScanModules(rootDir string) error {
 	if g.syncer == nil {
@@ -57,6 +60,15 @@ func (g *Generator) scanWritableModule(dir string) error {
 			infos, err := g.parseDefinitionsInFile(path)
 			if err != nil {
 				return nil // skip unparseable
+			}
+
+			fset := token.NewFileSet()
+			node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+			if err != nil {
+				return nil // skip unparseable
+			}
+			if err := g.resolveStorage(infos, node); err != nil {
+				return err
 			}
 
 			// Merge into cache

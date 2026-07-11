@@ -1,4 +1,3 @@
-
 package ormc
 
 import (
@@ -113,7 +112,7 @@ func (g *Generator) parseDefinition(varName string, expr ast.Expr, file *ast.Fil
 		if f.HasDB {
 			hasDB = true
 		}
-		if f.WidgetConstructor != "" {
+		if f.KindConstructor != "" && strings.HasPrefix(f.KindConstructor, "input.") {
 			hasForm = true
 		}
 	}
@@ -161,7 +160,14 @@ func (g *Generator) parseField(cl *ast.CompositeLit) (FieldInfo, error) {
 				fi.Name = fmt.Convert(fi.ColumnName).CamelUp().String()
 			}
 		case "Type":
-			fi.Type = parseFieldType(kv.Value)
+			fi.KindConstructor = exprToString(kv.Value)
+			if call, ok := kv.Value.(*ast.CallExpr); ok {
+				for _, arg := range call.Args {
+					if ident, ok := arg.(*ast.Ident); ok {
+						fi.KindArgIdents = append(fi.KindArgIdents, ident.Name)
+					}
+				}
+			}
 		case "NotNull":
 			fi.NotNull = exprToBool(kv.Value)
 		case "OmitEmpty":
@@ -169,7 +175,7 @@ func (g *Generator) parseField(cl *ast.CompositeLit) (FieldInfo, error) {
 		case "Exclude":
 			fi.Exclude = exprToBool(kv.Value)
 		case "Widget":
-			fi.WidgetConstructor = exprToString(kv.Value)
+			return FieldInfo{}, fmt.Err(fmt.Sprintf("field %s: Field.Widget was removed (Kind unification): declare the kind in Type — e.g. Type: input.Email()", fi.ColumnName))
 		case "DB":
 			g.parseDBField(kv.Value, &fi)
 		case "Ref":
@@ -179,13 +185,36 @@ func (g *Generator) parseField(cl *ast.CompositeLit) (FieldInfo, error) {
 		}
 	}
 
-	// Plan §4.4: Falla ruidoso if Ref is nil for FieldStruct/FieldStructSlice
-	if (fi.Type == model.FieldStruct || fi.Type == model.FieldStructSlice) && fi.Ref == "" {
-		return FieldInfo{}, fmt.Errf("Field %s: Ref must not be nil for FieldStruct/FieldStructSlice", fi.ColumnName)
+	if fi.KindConstructor == "" {
+		return FieldInfo{}, fmt.Err(fmt.Sprintf("field %s: kind required", fi.ColumnName))
 	}
 
-	// Post-process type mapping to GoType
-	fi.GoType = FieldTypeToGoType(fi.Type, fi.Ref)
+	// Composition refs come from the constructor argument, not Ref:
+	_, ctorName := parseConstructor(fi.KindConstructor)
+	if ctorName == "Struct" || ctorName == "StructSlice" {
+		// Extract arg from model.Struct(&AddressModel) / model.StructSlice(&AddressModel)
+		arg := ""
+		if call, ok := kvToExpr(cl, "Type").(*ast.CallExpr); ok && len(call.Args) > 0 {
+			arg = exprToString(call.Args[0])
+		}
+		if arg == "" || arg == "nil" {
+			return FieldInfo{}, fmt.Err(fmt.Sprintf("field %s: %s requires a non-nil Definition argument", fi.ColumnName, fi.KindConstructor))
+		}
+		if fi.Ref != "" {
+			return FieldInfo{}, fmt.Err(fmt.Sprintf("field %s: contradiction: Ref: cannot be used with composition kind %s (it already takes the definition as an argument)", fi.ColumnName, fi.KindConstructor))
+		}
+		fi.Ref = strings.TrimPrefix(arg, "&")
+		if ctorName == "StructSlice" {
+			fi.Type = model.FieldStructSlice
+		} else {
+			fi.Type = model.FieldStruct
+		}
+		fi.GoType = FieldTypeToGoType(fi.Type, fi.Ref)
+	}
+
+	// Non-composition fields: fi.Type stays 0 here and is populated by
+	// stage-2 resolution (resolveStorage: builtin table or dependency probe).
+	// GoType for those fields is computed there once fi.Type is known.
 
 	return fi, nil
 }
@@ -265,31 +294,6 @@ func (g *Generator) parsePermitted(expr ast.Expr, fi *FieldInfo) {
 	}
 }
 
-func parseFieldType(expr ast.Expr) model.FieldType {
-	s := exprToString(expr)
-	switch {
-	case strings.Contains(s, "FieldText"):
-		return model.FieldText
-	case strings.Contains(s, "FieldIntSlice"):
-		return model.FieldIntSlice
-	case strings.Contains(s, "FieldInt"):
-		return model.FieldInt
-	case strings.Contains(s, "FieldFloat"):
-		return model.FieldFloat
-	case strings.Contains(s, "FieldBool"):
-		return model.FieldBool
-	case strings.Contains(s, "FieldBlob"):
-		return model.FieldBlob
-	case strings.Contains(s, "FieldStructSlice"):
-		return model.FieldStructSlice
-	case strings.Contains(s, "FieldStruct"):
-		return model.FieldStruct
-	case strings.Contains(s, "FieldRaw"):
-		return model.FieldRaw
-	}
-	return model.FieldText
-}
-
 func parseRef(expr ast.Expr) string {
 	s := exprToString(expr)
 	s = strings.TrimPrefix(s, "&")
@@ -355,6 +359,16 @@ func ToSnakeCase(s string) string {
 	return fmt.Convert(s).SnakeLow().String()
 }
 
+func kvToExpr(cl *ast.CompositeLit, key string) ast.Expr {
+	for _, elt := range cl.Elts {
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			if exprToString(kv.Key) == key {
+				return kv.Value
+			}
+		}
+	}
+	return nil
+}
 
 func FieldTypeToGoType(ft model.FieldType, ref string) string {
 	switch ft {

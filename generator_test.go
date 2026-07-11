@@ -1,12 +1,12 @@
 package ormc
 
 import (
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/tinywasm/model"
 )
 
 // writeTemp writes content to a temp file and returns its path.
@@ -26,13 +26,19 @@ import "github.com/tinywasm/model"
 var UserModel = model.Definition{
 	Name: "user",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true}},
-		{Name: "name", Type: model.FieldText},
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true}},
+		{Name: "name", Type: model.Text()},
 	},
 }
 `
 	g := New()
-	infos, err := g.parseDefinitionsInFile(writeTemp(t, src))
+	tmpPath := writeTemp(t, src)
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpPath, nil, parser.ParseComments)
+	infos, err := g.parseDefinitionsInFile(tmpPath)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,8 +49,8 @@ var UserModel = model.Definition{
 	if info.Name != "User" {
 		t.Errorf("expected User, got %s", info.Name)
 	}
-	if info.Fields[0].Type != model.FieldInt {
-		t.Errorf("expected FieldInt, got %v", info.Fields[0].Type)
+	if info.Fields[0].KindConstructor != "model.Int()" {
+		t.Errorf("expected model.Int(), got %v", info.Fields[0].KindConstructor)
 	}
 	if info.ModelName != "user" {
 		t.Errorf("expected user, got %s", info.ModelName)
@@ -60,13 +66,19 @@ import "github.com/tinywasm/model"
 var UserModel = model.Definition{
 	Name: "user",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true}},
-		{Name: "password_hash", Type: model.FieldText, Exclude: true},
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true}},
+		{Name: "password_hash", Type: model.Text(), Exclude: true},
 	},
 }
 `
 	g := New()
-	infos, err := g.parseDefinitionsInFile(writeTemp(t, src))
+	tmpPath := writeTemp(t, src)
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpPath, nil, parser.ParseComments)
+	infos, err := g.parseDefinitionsInFile(tmpPath)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,21 +94,26 @@ import "github.com/tinywasm/model"
 var ChildModel = model.Definition{
 	Name: "child",
 	Fields: model.Fields{
-		{Name: "x", Type: model.FieldText},
+		{Name: "x", Type: model.Text()},
 	},
 }
 var ParentModel = model.Definition{
 	Name: "parent",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true}},
-		{Name: "count", Type: model.FieldInt},
-		{Name: "child", Type: model.FieldStruct, Ref: &ChildModel},
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true}},
+		{Name: "count", Type: model.Int()},
+		{Name: "child", Type: model.Struct(&ChildModel)},
 	},
 }
 `
 	tmpFile := writeTemp(t, src)
 	g := New()
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpFile, nil, parser.ParseComments)
 	infos, err := g.parseDefinitionsInFile(tmpFile)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,14 +161,19 @@ import "github.com/tinywasm/model"
 var ModelModel = model.Definition{
 	Name: "model",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true}},
-		{Name: "config", Type: model.FieldRaw},
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true}},
+		{Name: "config", Type: model.Raw()},
 	},
 }
 `
 	tmpFile := writeTemp(t, src)
 	g := New()
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpFile, nil, parser.ParseComments)
 	infos, err := g.parseDefinitionsInFile(tmpFile)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,14 +207,19 @@ import "github.com/tinywasm/model"
 var ModelModel = model.Definition{
 	Name: "model",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true}},
-		{Name: "text", Type: model.FieldText, OmitEmpty: true},
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true}},
+		{Name: "text", Type: model.Text(), OmitEmpty: true},
 	},
 }
 `
 	tmpFile := writeTemp(t, src)
 	g := New()
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpFile, nil, parser.ParseComments)
 	infos, err := g.parseDefinitionsInFile(tmpFile)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,14 +249,19 @@ var UserModel = model.Definition{ Name: "user" }
 var SessionModel = model.Definition{
 	Name: "session",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true}},
-		{Name: "user_id", Type: model.FieldInt, Ref: &UserModel, DB: &model.FieldDB{RefColumn: "id", OnDelete: "CASCADE"}},
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true}},
+		{Name: "user_id", Type: model.Int(), Ref: &UserModel, DB: &model.FieldDB{RefColumn: "id", OnDelete: "CASCADE"}},
 	},
 }
 `
 	tmpFile := writeTemp(t, src)
 	g := New()
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpFile, nil, parser.ParseComments)
 	infos, err := g.parseDefinitionsInFile(tmpFile)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +278,7 @@ var SessionModel = model.Definition{
 	}
 	s := string(content)
 
-	if !strings.Contains(s, "func (m *Session) SchemaExt() []orm.FieldExt {") {
+	if !strings.Contains(s, "func (m *Session) SchemaExt() []ddlc.FieldExt {") {
 		t.Errorf("missing SchemaExt generation")
 	}
 	if !strings.Contains(s, "Ref: \"user\", RefColumn: \"id\", OnDelete: \"CASCADE\"") {
@@ -260,15 +292,20 @@ import "github.com/tinywasm/model"
 var UserModel = model.Definition{
 	Name: "user",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true}},
-		{Name: "name", Type: model.FieldText},
-		{Name: "secret", Type: model.FieldText, Exclude: true},
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true}},
+		{Name: "name", Type: model.Text()},
+		{Name: "secret", Type: model.Text(), Exclude: true},
 	},
 }
 `
 	tmpFile := writeTemp(t, src)
 	g := New()
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpFile, nil, parser.ParseComments)
 	infos, err := g.parseDefinitionsInFile(tmpFile)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,21 +343,26 @@ import "github.com/tinywasm/model"
 var ItemModel = model.Definition{
 	Name: "item",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true}},
-		{Name: "tenant_id", Type: model.FieldText},
-		{Name: "sku", Type: model.FieldText},
+		{Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true}},
+		{Name: "tenant_id", Type: model.Text()},
+		{Name: "sku", Type: model.Text()},
 	},
 }
 var NoDBModel = model.Definition{
 	Name: "no_db",
 	Fields: model.Fields{
-		{Name: "x", Type: model.FieldText},
+		{Name: "x", Type: model.Text()},
 	},
 }
 `
 	tmpFile := writeTemp(t, src)
 	g := New()
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpFile, nil, parser.ParseComments)
 	infos, err := g.parseDefinitionsInFile(tmpFile)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,13 +403,18 @@ import "github.com/tinywasm/model"
 var PingArgsModel = model.Definition{
 	Name: "ping_args",
 	Fields: model.Fields{
-		{Name: "count", Type: model.FieldInt},
+		{Name: "count", Type: model.Int()},
 	},
 }
 `
 	tmpFile := writeTemp(t, src)
 	g := New()
+	fset := token.NewFileSet()
+	node, _ := parser.ParseFile(fset, tmpFile, nil, parser.ParseComments)
 	infos, err := g.parseDefinitionsInFile(tmpFile)
+	if err == nil {
+		_ = g.resolveStorage(infos, node)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

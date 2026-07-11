@@ -51,7 +51,7 @@ func (m *CatalogItem) Pointers() []any { return nil }
 		t.Fatalf("expected 4 fields, got %d", len(fields))
 	}
 
-	if fields[0].Name != "id" || fields[0].Type != model.FieldText || fields[0].DB == nil || !fields[0].DB.PK {
+	if fields[0].Name != "id" || fields[0].Type.Storage() != model.FieldText || fields[0].DB == nil || !fields[0].DB.PK {
 		t.Errorf("field 0 mismatch: %+v", fields[0])
 	}
 
@@ -160,7 +160,7 @@ var _schemaX = []model.Field{
 	if len(fields) != 2 {
 		t.Fatal("expected 2 fields")
 	}
-	if fields[1].Type != 0 {
-		t.Errorf("expected 0 for unknown type, got %v", fields[1].Type)
+	if fields[1].Type != nil {
+		t.Errorf("expected nil for unknown type, got %v", fields[1].Type)
 	}
 }

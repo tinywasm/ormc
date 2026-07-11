@@ -35,8 +35,8 @@ import "github.com/tinywasm/model"
 var UserModel = model.Definition{
 	Name: "user",
 	Fields: model.Fields{
-		{Name: "id", Type: model.FieldText, DB: &model.FieldDB{PK: true}},
-		{Name: "name", Type: model.FieldText},
+		{Name: "id", Type: model.Text(), DB: &model.FieldDB{PK: true}},
+		{Name: "name", Type: model.Text()},
 	},
 }
 `), 0644)

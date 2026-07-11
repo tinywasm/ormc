@@ -2,10 +2,6 @@
 
 > WHAT ormc is and WHY it works the way it does. The debate behind the
 > storage-resolution decision lives in [DESIGN.md](DESIGN.md).
->
-> STATUS (remove this note when phase B lands): written documentation-first
-> on 2026-07-10 — this describes the settled phase-B design, whose
-> implementation is in progress.
 
 ## What ormc is
 

@@ -10,14 +10,20 @@ import (
 
 )
 
-var fieldTypeByName = map[string]model.FieldType{
-	"FieldText":   model.FieldText,
-	"FieldInt":    model.FieldInt,
-	"FieldFloat":  model.FieldFloat,
-	"FieldBool":   model.FieldBool,
-	"FieldBlob":   model.FieldBlob,
-	"FieldStruct": model.FieldStruct,
-	"FieldRaw":    model.FieldRaw,
+var kindByName = map[string]model.Kind{
+	"Text":   model.Text(),
+	"Int":    model.Int(),
+	"Float":  model.Float(),
+	"Bool":   model.Bool(),
+	"Blob":   model.Blob(),
+	"Raw":    model.Raw(),
+	// Note: FieldText/FieldInt are the legacy names that might still be in old files
+	"FieldText":  model.Text(),
+	"FieldInt":   model.Int(),
+	"FieldFloat": model.Float(),
+	"FieldBool":  model.Bool(),
+	"FieldBlob":  model.Blob(),
+	"FieldRaw":   model.Raw(),
 }
 
 // parseGenerated extracts (modelName → []model.Field) from a generated *_orm.go
@@ -138,9 +144,15 @@ func parseGenerated(path string) (map[string][]model.Field, error) {
 							typeName = ident.Name
 						} else if sel, ok := kve.Value.(*ast.SelectorExpr); ok {
 							typeName = sel.Sel.Name
+						} else if call, ok := kve.Value.(*ast.CallExpr); ok {
+							if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+								typeName = sel.Sel.Name
+							} else if ident, ok := call.Fun.(*ast.Ident); ok {
+								typeName = ident.Name
+							}
 						}
-						if t, ok := fieldTypeByName[typeName]; ok {
-							field.Type = t
+						if k, ok := kindByName[typeName]; ok {
+							field.Type = k
 						}
 					case "NotNull":
 						if ident, ok := kve.Value.(*ast.Ident); ok && ident.Name == "true" {
