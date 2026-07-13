@@ -20,7 +20,7 @@ boundaries:
 | `tinywasm/ormc` | this repo: generator + `cmd/ormc` + `cmd/ddlc` | — |
 | `tinywasm/ddlc` | DDL contract (`Exporter`, `TopologicalSort`, `FieldExt`) | emitted in generated FK code |
 | `tinywasm/orm` | query/scan/sync runtime | imported by generated read helpers |
-| `tinywasm/ormcp` | MCP provider over the stack | consumer, not a dependency |
+| `tinywasm/sqlmcp` | MCP provider over the stack | consumer, not a dependency |
 
 ormc runs in two modes: standalone CLI (`cmd/ormc`) and **live watcher**
 inside the dev tool (`tinywasm/app` feeds file events; see

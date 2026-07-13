@@ -11,6 +11,18 @@ import (
 	"github.com/tinywasm/fmt"
 )
 
+// hasExcludedField reports whether the Definition drops any field from the
+// generated struct. Only then does the output carry a filtered _schemaX literal:
+// otherwise Schema() returns XModel.Fields and no field literal is re-emitted.
+func hasExcludedField(fields []FieldInfo) bool {
+	for _, f := range fields {
+		if f.Exclude {
+			return true
+		}
+	}
+	return false
+}
+
 // GenerateForFile writes ORM implementations for all infos into one file.
 func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error {
 	if len(infos) == 0 {
@@ -37,6 +49,14 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 					break
 				}
 			}
+		}
+		// Kind constructors (input.Email(), custom kinds) are only WRITTEN into the
+		// output inside the _schemaX literal, which exists only when a field is
+		// excluded — otherwise Schema() returns XModel.Fields and the generated file
+		// never names a kind. Importing them unconditionally emits an unused import,
+		// and the generated file does not compile.
+		if !hasExcludedField(info.Fields) {
+			continue
 		}
 		for _, f := range info.Fields {
 			if f.KindImportPath != "" {
@@ -103,15 +123,7 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 		// Model Interface Methods
 		buf.Write(fmt.Sprintf("func (m *%s) ModelName() string { return \"%s\" }\n\n", info.Name, info.ModelName))
 
-		hasExclude := false
-		for _, f := range info.Fields {
-			if f.Exclude {
-				hasExclude = true
-				break
-			}
-		}
-
-		if hasExclude {
+		if hasExcludedField(info.Fields) {
 			buf.Write(fmt.Sprintf("var _schema%s = []model.Field{\n", info.Name))
 			for _, f := range info.Fields {
 				if f.Exclude {
@@ -367,7 +379,7 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 				buf.Write(fmt.Sprintf("func (m *%s) SchemaExt() []ddlc.FieldExt {\n", info.Name))
 				buf.Write("\treturn []ddlc.FieldExt{\n")
 				schemaVar := fmt.Sprintf("%sModel.Fields", info.Name)
-				if hasExclude {
+				if hasExcludedField(info.Fields) {
 					schemaVar = fmt.Sprintf("_schema%s", info.Name)
 				}
 
