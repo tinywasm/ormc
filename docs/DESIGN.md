@@ -23,7 +23,7 @@ chicken-and-egg — see model repo `docs/ARCHITECTURE.md` §9).
 
 A comment above each kind constructor, read from the package source.
 
-- Violates the harness doctrine (`tinywasm/docs/ARNES_DE_CONSTRUCCION.md`):
+- Violates the harness doctrine (`tinywasm/app/docs/CONSTRUCTION_HARNESS.md`):
   it is prose the compiler cannot verify, a mandatory step authors must
   remember, and a **second copy** of a fact `Storage()` already states in
   typed code — the copies can silently contradict each other
