@@ -1,6 +1,8 @@
 ---
 PLAN: "refactor!: ormc genera model.FieldExt (no ddlc.FieldExt) — ddlc deja de ser dependencia de ormc"
 TAG: v0.1.0
+STATUS: running
+SESSION: 7442141242496037719
 ---
 
 > This plan is dispatched via the CodeJob workflow. See skill: agents-workflow.
