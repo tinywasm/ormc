@@ -17,8 +17,8 @@ boundaries:
 | Repo | Role | ormc's relationship |
 |---|---|---|
 | `tinywasm/model` | field/kind contract (`Definition`, `Field`, `Kind`) | ormc's INPUT contract |
-| `tinywasm/ormc` | this repo: generator + `cmd/ormc` + `cmd/ddlc` | — |
-| `tinywasm/ddlc` | DDL contract (`Exporter`, `TopologicalSort`, `FieldExt`) | emitted in generated FK code |
+| `tinywasm/ormc` | this repo: generator + `cmd/ormc` | — |
+| `tinywasm/ddlc` | DDL migration tool (`tui`) | not a dependency of ormc anymore |
 | `tinywasm/orm` | query/scan/sync runtime | imported by generated read helpers |
 | `tinywasm/sqlmcp` | MCP provider over the stack | consumer, not a dependency |
 
@@ -101,7 +101,6 @@ Generated files (`*_orm.go`) import:
 
 - `tinywasm/model` — always (schema types).
 - `tinywasm/orm` — when the model has DB role (query helpers `*orm.QB`).
-- `tinywasm/ddlc` — only when scalar FKs exist (`SchemaExt() []ddlc.FieldExt`).
 - The kind constructors' packages (e.g. `tinywasm/form/input`) — `Schema()`
   re-emits every `Type:` constructor expression **verbatim**; ormc passes
   kinds through without understanding them.

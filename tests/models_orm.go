@@ -5,7 +5,6 @@ package tests
 import (
 	"github.com/tinywasm/model"
 	"github.com/tinywasm/orm"
-	"github.com/tinywasm/ddlc"
 )
 
 type User struct {
@@ -164,8 +163,8 @@ func ReadAllOrder(qb *orm.QB) (OrderList, error) {
 	return results, err
 }
 
-func (m *Order) SchemaExt() []ddlc.FieldExt {
-	return []ddlc.FieldExt{
+func (m *Order) SchemaExt() []model.FieldExt {
+	return []model.FieldExt{
 		{Field: OrderModel.Fields[1], Ref: "user", RefColumn: "id", OnDelete: ""},
 	}
 }
@@ -504,8 +503,8 @@ func ReadAllRefNoColumn(qb *orm.QB) (RefNoColumnList, error) {
 	return results, err
 }
 
-func (m *RefNoColumn) SchemaExt() []ddlc.FieldExt {
-	return []ddlc.FieldExt{
+func (m *RefNoColumn) SchemaExt() []model.FieldExt {
+	return []model.FieldExt{
 		{Field: RefNoColumnModel.Fields[1], Ref: "multi_a", RefColumn: "", OnDelete: ""},
 	}
 }

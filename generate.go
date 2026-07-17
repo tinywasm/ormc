@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tinywasm/ddlc"
 	"github.com/tinywasm/fmt"
 )
 
@@ -69,26 +68,6 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 	buf.Write("\t\"github.com/tinywasm/model\"\n")
 	if hasORM {
 		buf.Write("\t\"github.com/tinywasm/orm\"\n")
-	}
-
-	// SchemaExt needs ddlc.FieldExt
-	hasFK := false
-	for _, info := range infos {
-		if info.NoDB {
-			continue
-		}
-		for _, f := range info.Fields {
-			if f.Ref != "" && f.Type != model.FieldStruct && f.Type != model.FieldStructSlice {
-				hasFK = true
-				break
-			}
-		}
-		if hasFK {
-			break
-		}
-	}
-	if hasFK {
-		buf.Write("\t\"github.com/tinywasm/ddlc\"\n")
 	}
 
 	if len(kindImports) > 0 {
@@ -376,8 +355,8 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 				}
 			}
 			if hasFK {
-				buf.Write(fmt.Sprintf("func (m *%s) SchemaExt() []ddlc.FieldExt {\n", info.Name))
-				buf.Write("\treturn []ddlc.FieldExt{\n")
+				buf.Write(fmt.Sprintf("func (m *%s) SchemaExt() []model.FieldExt {\n", info.Name))
+				buf.Write("\treturn []model.FieldExt{\n")
 				schemaVar := fmt.Sprintf("%sModel.Fields", info.Name)
 				if hasExcludedField(info.Fields) {
 					schemaVar = fmt.Sprintf("_schema%s", info.Name)
@@ -407,7 +386,7 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 type modelStub struct {
 	name   string
 	schema []model.Field
-	exts   []ddlc.FieldExt
+	exts   []model.FieldExt
 }
 
 func (m *modelStub) ModelName() string                { return m.name }
@@ -416,7 +395,7 @@ func (m *modelStub) Pointers() []any                  { return nil }
 func (m *modelStub) IsNil() bool                      { return m == nil }
 func (m *modelStub) EncodeFields(_ model.FieldWriter) {}
 func (m *modelStub) DecodeFields(_ model.FieldReader) {}
-func (m *modelStub) SchemaExt() []ddlc.FieldExt       { return m.exts }
+func (m *modelStub) SchemaExt() []model.FieldExt       { return m.exts }
 
 func newModelStub(info StructInfo) *modelStub {
 	stub := &modelStub{name: info.ModelName}
@@ -459,7 +438,7 @@ func newModelStub(info StructInfo) *modelStub {
 		}
 		stub.schema = append(stub.schema, field)
 		if f.Ref != "" {
-			stub.exts = append(stub.exts, ddlc.FieldExt{
+			stub.exts = append(stub.exts, model.FieldExt{
 				Field:     field,
 				Ref:       f.Ref,
 				RefColumn: f.RefColumn,
@@ -486,9 +465,16 @@ func goTypeToFieldType(goType string) model.FieldType {
 	}
 }
 
+// Exporter is implemented by SQL adapter compilers (sqlt, postgres) that can render a
+// full schema export. Defined here — not imported from ddlc — per Go convention: the
+// consumer of a single-method interface owns the interface, not the implementer.
+type Exporter interface {
+	ExportDDL(models []model.Model) (string, error)
+}
+
 // ExportSQL scans the directory for models and returns the full DDL.
-// Requires an injected ddlc.Exporter (e.g. from sqlt or postgres).
-func (g *Generator) ExportSQL(root string, exporter ddlc.Exporter) (string, error) {
+// Requires an injected Exporter (e.g. from sqlt or postgres).
+func (g *Generator) ExportSQL(root string, exporter Exporter) (string, error) {
 	g.rootDir = root
 	all, _, _, err := g.collectAllStructs()
 	if err != nil {
