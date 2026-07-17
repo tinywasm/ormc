@@ -60,7 +60,7 @@ func TestOrmc(t *testing.T) {
 		content := string(contentBytes)
 
 		expectedStrings := []string{
-			"func (m *Order) SchemaExt() []ddlc.FieldExt {",
+			"func (m *Order) SchemaExt() []model.FieldExt {",
 			"Ref: \"user\", RefColumn: \"id\"",
 			"var User_ = struct {",
 		}

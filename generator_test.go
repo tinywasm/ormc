@@ -278,7 +278,7 @@ var SessionModel = model.Definition{
 	}
 	s := string(content)
 
-	if !strings.Contains(s, "func (m *Session) SchemaExt() []ddlc.FieldExt {") {
+	if !strings.Contains(s, "func (m *Session) SchemaExt() []model.FieldExt {") {
 		t.Errorf("missing SchemaExt generation")
 	}
 	if !strings.Contains(s, "Ref: \"user\", RefColumn: \"id\", OnDelete: \"CASCADE\"") {
