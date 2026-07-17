@@ -17,7 +17,7 @@ boundaries:
 | Repo | Role | ormc's relationship |
 |---|---|---|
 | `tinywasm/model` | field/kind contract (`Definition`, `Field`, `Kind`) | ormc's INPUT contract |
-| `tinywasm/ormc` | this repo: generator + `cmd/ormc` + `cmd/ddlc` | — |
+| `tinywasm/ormc` | this repo: generator + `cmd/ormc` | — |
 | `tinywasm/ddlc` | DDL migration tool (`tui`) | not a dependency of ormc anymore |
 | `tinywasm/orm` | query/scan/sync runtime | imported by generated read helpers |
 | `tinywasm/sqlmcp` | MCP provider over the stack | consumer, not a dependency |
