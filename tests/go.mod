@@ -8,11 +8,11 @@ go 1.25.2
 require (
 	github.com/tinywasm/model v0.1.0
 	github.com/tinywasm/orm v0.9.29
-	github.com/tinywasm/ormc v0.1.1
+	github.com/tinywasm/ormc v0.1.2
 )
 
 require (
-	github.com/tinywasm/fmt v0.25.3 // indirect
+	github.com/tinywasm/fmt v0.25.4 // indirect
 	github.com/tinywasm/modfind v0.0.4 // indirect
 )
 
