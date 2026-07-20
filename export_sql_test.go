@@ -21,7 +21,7 @@ func (e *exportDDLCalled) ExportDDL(models []model.Model) (string, error) {
 
 // TestExportSQL_NoModels_ReturnsErrNoModelsFound reproduces the reported bug:
 // tinywasm -tui against a project with no model.go/models.go files (e.g. a
-// view-only project) still writes an empty config/db.sql, because ExportSQL
+// view-only project) still writes an empty config/schema.sql, because ExportSQL
 // silently returned ("", nil) — a "successful" empty result — for zero
 // models, instead of a distinguishable error. The button's Handler
 // (ddlc/tui) only skips writing the output file when err != nil, so a nil
