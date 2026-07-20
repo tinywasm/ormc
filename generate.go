@@ -488,7 +488,7 @@ func (g *Generator) ExportSQL(root string, exporter Exporter) (string, error) {
 		models = append(models, newModelStub(info))
 	}
 	if len(models) == 0 {
-		return "", nil
+		return "", ErrNoModelsFound
 	}
 	return exporter.ExportDDL(models)
 }
