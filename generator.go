@@ -228,7 +228,7 @@ var inputWidgets = map[string]string{
 // tagSetters maps a struct-tag modifier to a wrapper function call.
 // %s is replaced with the current widget expression.
 // Add an entry here when a new sustractive tag is supported.
-// Corresponding helper must exist in tinywasm/form/input (e.g. input.SetTilde).
+// Corresponding helper must exist in tinywasm/input (e.g. input.SetTilde).
 var tagSetters = map[string]string{
 	"notilde": "input.SetTilde(%s, false)",
 }

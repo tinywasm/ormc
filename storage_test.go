@@ -136,7 +136,7 @@ func TestKind_NonSelfContainedArgument_HardError(t *testing.T) {
 	src := `package p
 import (
 	"github.com/tinywasm/model"
-	"github.com/tinywasm/form/input"
+	"github.com/tinywasm/input"
 )
 var localOptions = 5
 var UserModel = model.Definition{
@@ -201,7 +201,7 @@ func TestProbe_Failure_SurfacesOutputVerbatim(t *testing.T) {
 	src := `package p
 import (
 	"github.com/tinywasm/model"
-	"github.com/tinywasm/form/input"
+	"github.com/tinywasm/input"
 )
 var UserModel = model.Definition{
 	Name: "user",
@@ -227,7 +227,7 @@ func TestProbe_CompositionKindStorage_HardError(t *testing.T) {
 	src := `package p
 import (
 	"github.com/tinywasm/model"
-	"github.com/tinywasm/form/input"
+	"github.com/tinywasm/input"
 )
 var UserModel = model.Definition{
 	Name: "user",
@@ -253,7 +253,7 @@ func TestProbe_GeneratedSource_And_Resolution(t *testing.T) {
 	src := `package p
 import (
 	"github.com/tinywasm/model"
-	"github.com/tinywasm/form/input"
+	"github.com/tinywasm/input"
 )
 var UserModel = model.Definition{
 	Name: "user",
@@ -272,7 +272,7 @@ var UserModel = model.Definition{
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(captured, `k0 "github.com/tinywasm/form/input"`) {
+	if !strings.Contains(captured, `k0 "github.com/tinywasm/input"`) {
 		t.Errorf("expected probe source to import the kind's package under a k0 alias, got:\n%s", captured)
 	}
 	if !strings.Contains(captured, "k0.Email()") {
@@ -290,7 +290,7 @@ func TestGenerate_ProbedKind_EmitsPackageImport(t *testing.T) {
 	src := `package p
 import (
 	"github.com/tinywasm/model"
-	"github.com/tinywasm/form/input"
+	"github.com/tinywasm/input"
 )
 var UserModel = model.Definition{
 	Name: "user",
@@ -328,7 +328,7 @@ var UserModel = model.Definition{
 		t.Fatal(err)
 	}
 	s := string(content)
-	if !strings.Contains(s, `"github.com/tinywasm/form/input"`) {
+	if !strings.Contains(s, `"github.com/tinywasm/input"`) {
 		t.Errorf("expected generated file to import the probed kind's package, got:\n%s", s)
 	}
 	if !strings.Contains(s, "Type: input.Email()") {
@@ -348,7 +348,7 @@ func TestProbe_Cache_HitAndInvalidate(t *testing.T) {
 	src := `package p
 import (
 	"github.com/tinywasm/model"
-	"github.com/tinywasm/form/input"
+	"github.com/tinywasm/input"
 )
 var UserModel = model.Definition{
 	Name: "user",

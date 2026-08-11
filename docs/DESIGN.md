@@ -30,7 +30,7 @@ A comment above each kind constructor, read from the package source.
   (`//ormc:storage int` above a text kind compiles fine and generates wrong
   code).
 - Was partially implemented (directives briefly existed in
-  `tinywasm/form/input`'s working tree, never published; a cloud agent
+  `tinywasm/input`'s working tree, never published; a cloud agent
   implementing the ormc side was stopped and discarded).
 
 ### 2. Embedded storage-marker types — REJECTED

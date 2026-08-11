@@ -101,7 +101,7 @@ Generated files (`*_orm.go`) import:
 
 - `tinywasm/model` — always (schema types).
 - `tinywasm/orm` — when the model has DB role (query helpers `*orm.QB`).
-- The kind constructors' packages (e.g. `tinywasm/form/input`) — `Schema()`
+- The kind constructors' packages (e.g. `tinywasm/input`) — `Schema()`
   re-emits every `Type:` constructor expression **verbatim**; ormc passes
   kinds through without understanding them.
 
