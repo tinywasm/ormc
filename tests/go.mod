@@ -7,13 +7,14 @@ go 1.25.2
 
 require (
 	github.com/tinywasm/model v0.1.4
-	github.com/tinywasm/orm v0.9.29
+	github.com/tinywasm/orm v0.11.6
 	github.com/tinywasm/ormc v0.1.8
 )
 
 require (
 	github.com/tinywasm/fmt v0.25.5 // indirect
 	github.com/tinywasm/modfind v0.0.4 // indirect
+	github.com/tinywasm/storage v0.0.2-0.20260717121821-7e528006807f // indirect
 )
 
 replace github.com/tinywasm/ormc => ..
