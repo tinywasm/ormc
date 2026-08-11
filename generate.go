@@ -35,7 +35,7 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 
 	hasORM := false
 	// kindImports collects the packages that non-model kind constructors
-	// (form/input kinds, project-custom kinds) live in, keyed by import path.
+	// (tinywasm/input kinds, project-custom kinds) live in, keyed by import path.
 	kindImports := make(map[string]string) // path -> alias used in the scanned source
 	for _, info := range infos {
 		if !info.NoDB {
