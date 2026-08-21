@@ -12,7 +12,7 @@ require (
 )
 
 require (
-	github.com/tinywasm/fmt v0.25.6 // indirect
+	github.com/tinywasm/fmt v0.25.7 // indirect
 	github.com/tinywasm/modfind v0.0.4 // indirect
 	github.com/tinywasm/storage v0.0.2-0.20260717121821-7e528006807f // indirect
 )
