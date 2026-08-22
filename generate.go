@@ -339,9 +339,9 @@ func (o *Generator) GenerateForFile(infos []StructInfo, sourceFile string) error
 
 			buf.Write(fmt.Sprintf("func ReadAll%s(qb *orm.QB) (%sList, error) {\n", info.Name, info.Name))
 			buf.Write(fmt.Sprintf("\tvar results %sList\n", info.Name))
-			buf.Write("\terr := orm.ReadAll(qb,\n")
-			buf.Write(fmt.Sprintf("\t\tfunc() *%s { return &%s{} },\n", info.Name, info.Name))
-			buf.Write(fmt.Sprintf("\t\tfunc(m *%s) { results = append(results, m) },\n", info.Name))
+			buf.Write("\terr := qb.ReadAll(\n")
+			buf.Write(fmt.Sprintf("\t\tfunc() model.Model { return &%s{} },\n", info.Name))
+			buf.Write(fmt.Sprintf("\t\tfunc(m model.Model) { results = append(results, m.(*%s)) },\n", info.Name))
 			buf.Write("\t)\n")
 			buf.Write("\treturn results, err\n")
 			buf.Write("}\n\n")
