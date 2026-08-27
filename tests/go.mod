@@ -6,9 +6,9 @@ module github.com/tinywasm/ormc/tests
 go 1.25.2
 
 require (
-	github.com/tinywasm/model v0.1.4
+	github.com/tinywasm/model v0.1.7
 	github.com/tinywasm/orm v0.11.10
-	github.com/tinywasm/ormc v0.1.12
+	github.com/tinywasm/ormc v0.1.13
 )
 
 require (
