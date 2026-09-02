@@ -7,7 +7,7 @@ go 1.25.2
 
 require (
 	github.com/tinywasm/model v0.1.7
-	github.com/tinywasm/orm v0.11.10
+	github.com/tinywasm/orm v0.12.0
 	github.com/tinywasm/ormc v0.1.13
 )
 
